@@ -1,1 +1,1 @@
-# diary
+# Daily Diary
