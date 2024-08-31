@@ -1,160 +1,122 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import 'package:date_picker_timeline/date_picker_timeline.dart';
+import 'package:mobiledevelopment/config/my_theme.dart';
+import 'package:mobiledevelopment/controller/task_controller.dart';
+import 'package:mobiledevelopment/controller/theme_controller.dart';
 
-
-import 'chat_room.dart';
-import 'methods.dart';
-
-class HomeScreen extends StatefulWidget {
-  @override
-  _HomeScreenState createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
-  Map<String, dynamic>? userMap;
-  bool isLoading = false;
-  final TextEditingController _search = TextEditingController();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance!.addObserver(this);
-    setStatus("Online");
-  }
-
-  void setStatus(String status) async {
-    await _firestore.collection('users').doc(_auth.currentUser!.uid).update({
-      "status": status,
-    });
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      // online
-      setStatus("Online");
-    } else {
-      // offline
-      setStatus("Offline");
-    }
-  }
-
-  String chatRoomId(String user1, String user2) {
-    if (user1[0].toLowerCase().codeUnits[0] >
-        user2.toLowerCase().codeUnits[0]) {
-      return "$user1$user2";
-    } else {
-      return "$user2$user1";
-    }
-  }
-
-  void onSearch() async {
-    FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-    setState(() {
-      isLoading = true;
-    });
-
-    await _firestore
-        .collection('users')
-        .where("email", isEqualTo: _search.text)
-        .get()
-        .then((value) {
-      setState(() {
-        userMap = value.docs[0].data();
-        isLoading = false;
-      });
-      print(userMap);
-    });
-  }
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    TaskController taskController = Get.put(TaskController());
+    ThemeController themeController = Get.put(ThemeController());
+
+    DateTime currentDateTime = DateTime.now().toLocal();
+    String formattedDate = DateFormat('d MMMM, yyyy').format(currentDateTime);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text("Home Screen"),
+        title: Text("HomeScreen"),
+        centerTitle: true,
+        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         actions: [
-          IconButton(icon: Icon(Icons.logout), onPressed: () => logOut(context))
+          IconButton(
+            onPressed: () {
+              themeController.changeTheme();
+            },
+            icon: Obx(
+                  () => themeController.isDark.value
+                  ? Icon(Icons.dark_mode)
+                  : Icon(Icons.light_mode),
+            ),
+          ),
         ],
       ),
-      body: isLoading
-          ? Center(
-              child: Container(
-                height: size.height / 20,
-                width: size.height / 20,
-                child: CircularProgressIndicator(),
-              ),
-            )
-          : Column(
-              children: [
-                SizedBox(
-                  height: size.height / 20,
+      body: Obx(() {
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Date display below AppBar
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Container(
+                  margin: EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        formattedDate,
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      Text("Today"),
+                    ],
+                  ),
                 ),
-                Container(
-                  height: size.height / 14,
-                  width: size.width,
-                  alignment: Alignment.center,
+              ),
+              // Horizontal Date Picker
+              Container(
+                height: 100,
+                child: DatePicker(
+                  DateTime.now(),
+                  width: 80,
+                  height: 80,
+                  initialSelectedDate: DateTime.now(),
+                  selectionColor: primaryClr,
+                  selectedTextColor: Colors.white,
+
+                  onDateChange: (date) {
+                    // Logic to handle date change
+                  },
+                ),
+              ),
+              // Task list
+              ...taskController.taskList.map((task) {
+                int index = taskController.taskList.indexOf(task);
+                return Padding(
+                  padding: const EdgeInsets.all(9.0),
                   child: Container(
-                    height: size.height / 14,
-                    width: size.width / 1.15,
-                    child: TextField(
-                      controller: _search,
-                      decoration: InputDecoration(
-                        hintText: "Search",
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
+                    decoration: BoxDecoration(
+                      color: primaryClr,
+                      borderRadius: BorderRadius.circular(21),
+                    ),
+                    child: ListTile(
+                      title: Text(task),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                              onPressed: () {
+                                taskController.deleteTask(index);
+                              },
+                              icon: Icon(Icons.delete_outlined)),
+                          IconButton(
+                              onPressed: () {
+                                taskController.openEditDialog(index);
+                              },
+                              icon: Icon(Icons.edit))
+                        ],
                       ),
                     ),
                   ),
-                ),
-                SizedBox(
-                  height: size.height / 50,
-                ),
-                ElevatedButton(
-                  onPressed: onSearch,
-                  child: Text("Search"),
-                ),
-                SizedBox(
-                  height: size.height / 30,
-                ),
-                userMap != null
-                    ? ListTile(
-                        onTap: () {
-                          String roomId = chatRoomId(
-                              _auth.currentUser!.displayName!,
-                              userMap!['name']);
-
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => ChatRoom(
-                                chatRoomId: roomId,
-                                userMap: userMap!,
-                              ),
-                            ),
-                          );
-                        },
-                        leading: Icon(Icons.account_box, color: Colors.black),
-                        title: Text(
-                          userMap!['name'],
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        subtitle: Text(userMap!['email']),
-                        trailing: Icon(Icons.chat, color: Colors.black),
-                      )
-                    : Container(),
-              ],
-            ),
-
+                );
+              }).toList(),
+            ],
+          ),
+        );
+      }),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          taskController.openDialog();
+        },
+        child: Icon(Icons.add),
+      ),
     );
   }
 }
+
+
+
